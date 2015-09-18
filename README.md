@@ -16,7 +16,7 @@ Just gpg and python.
 
 ## Quickstart
 
-1. Ensure you have a gpg key. If you don't already have one you can run `gpg --gen-key` and follow the instructions to generate one. Choose a long password that you can remember for your private key password. Note that if you lose this password you will be unable to access any of your own secrets!
+1. Ensure you have a gpg key. See the section below on setting up GPG if you haven't already.
 2. Set the CRYPT_KEY_NAME environment variable in your `~/.bashrc` or other file that is sourced during initialization. You should set this variable to the name of the public key that will be used to encrypt all of the data.
 3. Put the crypt script in a directory that is on your PATH.
 4. Start adding secrets! You can do so by running `crypt add <file containing secrets> <path inside the crypt>`.
@@ -53,3 +53,27 @@ aws "$@"
 ```
 
 Now anytime you run `admin_aws` you will first have to decrypt the credentials using your private key password! Now you don't have to worry about accidentally copying your ~/.aws/config file off of your machine.
+
+
+## Setting up GPG
+
+First you will need to install gpg. On Ubuntu this is simple as `sudo apt-get install gnupg`.
+
+Next you will need to generate your private key:
+
+```bash
+gpg --gen-key
+```
+
+This will ask you several questions, be sure to choose a key length of 2048 or greater and a strong passphrase, longer is better to prevent brute force attacks. Note that if you forget this passphrase you will lose access to all of the associated secrets.
+
+Next export your private key, public key and revocation certificate to a thumbdrive and store them in a physically secure location.
+
+```bash
+# public key
+gpg --export --output /path/to/thumbdrive/mykey.pub -a mykey
+# private key
+gpg --export-secret-key --output /path/to/thumbdrive/mykey.key -a mykey
+# revocation certificate
+gpg --output /path/to/thumbdrive/revoke_mykey.asc --gen-revoke mykey
+```
