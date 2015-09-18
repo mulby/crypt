@@ -6,6 +6,7 @@ import argparse
 import errno
 import os
 import random
+import shutil
 import string
 import subprocess
 import sys
@@ -57,7 +58,6 @@ def add(args):
         gpg(*gpg_args, **gpg_kwargs)
     except subprocess.CalledProcessError:
         sys.exit(1)
-    sys.stderr.write('Wrote {0}.\n'.format(args.crypt_path))
 
 
 def get_encrypted_file_path(crypt_path):
@@ -93,7 +93,7 @@ def ensure_initialized():
     readme_path = os.path.join(CRYPT_REPO_PATH, 'README')
     if not os.path.exists(readme_path):
         with open(readme_path, 'w') as readme:
-            readme.write('This is a secure repository containing encrypted files managed by crypt.')
+            readme.write('This directory contains encrypted files managed by crypt.')
 
 
     config = configparser.SafeConfigParser()
@@ -155,13 +155,32 @@ def rm(args):
         sys.stderr.write('Removal failed. You must be able to decrypt {0} to remove it.\n'.format(args.crypt_path))
         sys.exit(1)
 
-    answer = raw_input("This operation cannot be undone, continue [y/N]? ")
+    if args.force:
+        answer = 'y'
+    else:
+        answer = raw_input("This operation cannot be undone, continue [y/N]? ")
+
     if answer.lower() == 'y':
         os.unlink(encrypted_file_path)
-        sys.stderr.write('Removed {0}.\n'.format(args.crypt_path))
     else:
-        sys.stderr.write('Aborting.\n')
         sys.exit(1)
+
+
+def mv(args):
+    from_encrypted_file_path = get_encrypted_file_path(args.from_crypt_path)
+    if not os.path.exists(from_encrypted_file_path):
+        sys.stderr.write('Path {0} does not exist.\n'.format(args.from_crypt_path))
+        sys.exit(1)
+
+    try:
+        gpg('--decrypt', from_encrypted_file_path)
+    except subprocess.CalledProcessError:
+        sys.stderr.write('Move failed. You must be able to decrypt {0} to move it.\n'.format(args.from_crypt_path))
+        sys.exit(1)
+
+    to_encrypted_file_path = get_encrypted_file_path(args.to_crypt_path)
+    ensure_directory_exists(os.path.dirname(to_encrypted_file_path))
+    shutil.move(from_encrypted_file_path, to_encrypted_file_path)
 
 
 def pwgen(args):
@@ -200,34 +219,43 @@ def main():
     init_parser = subparsers.add_parser('init', help='Setup your crypt')
     init_parser.set_defaults(func=init)
 
-    add_parser = subparsers.add_parser('add', help='Add a file to the secure repo')
-    add_parser.add_argument('crypt_path', help='The path within the secure repo to store the file at')
+    add_parser = subparsers.add_parser('add', help='Add a file to the crypt')
+    add_parser.add_argument('crypt_path', help='The path within the crypt to store the file at')
     add_parser.add_argument('path', help='The file to add, specifying "-" will read the input from stdin')
     add_parser.set_defaults(func=add)
 
-    cat_parser = subparsers.add_parser('cat', help='Read a file in the secure repo and write its contents to stdout')
+    cat_parser = subparsers.add_parser('cat', help='Decrypt a file in the crypt and write unencrypted contents to stdout')
     cat_parser.add_argument('crypt_path', help='The file to read')
     cat_parser.set_defaults(func=cat)
 
-    list_parser = subparsers.add_parser('ls', help='List files stored in the secure repo')
+    list_parser = subparsers.add_parser('ls', help='List files stored in the crypt')
     list_parser.set_defaults(func=ls)
 
-    rm_parser = subparsers.add_parser('rm', help='Remove a file from the secure repo')
+    rm_parser = subparsers.add_parser('rm', help='Remove a file from the crypt')
+    rm_parser.add_argument('--force', '-f', action='store_true', help="Don't prompt to confirm if the file should be removed")
     rm_parser.add_argument('crypt_path', help='The file to remove')
     rm_parser.set_defaults(func=rm)
 
-    pwgen_parser = subparsers.add_parser('pwgen', help='Generate a password and store it in the secure repo')
-    pwgen_parser.add_argument('crypt_path', help='The path within the secure repo to store the password at')
-    pwgen_parser.add_argument('--length', type=int, default=32, help='The number of characters to include in the generated password')
-    pwgen_parser.set_defaults(func=pwgen)
+    mv_parser = subparsers.add_parser('mv', help='Rename or move a file in the crypt')
+    mv_parser.add_argument('from_crypt_path', help='The file to move')
+    mv_parser.add_argument('to_crypt_path', help='The new location to store the file in the crypt')
+    mv_parser.set_defaults(func=mv)
 
     exec_parser = subparsers.add_parser('exec', help='Run a process with decrypted files')
-    exec_parser.add_argument('--link', action='append', help='<crypt_path>:<filesystem_path>')
+    exec_parser.add_argument('--link', action='append', help='<crypt_path>:<filesystem_path>, decrypt the file stored at <crypt_path> and store the result at <filesystem_path> while executing the subprocess')
     exec_parser.add_argument('cmd', nargs=argparse.REMAINDER, help='Command to execute')
     exec_parser.set_defaults(func=execute)
 
+    pwgen_parser = subparsers.add_parser('pwgen', help='Generate a password and store it in the crypt')
+    pwgen_parser.add_argument('crypt_path', help='The path within the crypt to store the password at')
+    pwgen_parser.add_argument('--length', type=int, default=32, help='The number of characters to include in the generated password')
+    pwgen_parser.set_defaults(func=pwgen)
+
     args = parser.parse_args()
-    args.func(args)
+    if not hasattr(args, 'func'):
+        parser.print_help()
+    else:
+        args.func(args)
 
 
 if __name__ == "__main__":
