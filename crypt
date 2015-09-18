@@ -17,25 +17,35 @@ except ImportError:
     import os
     DEVNULL = open(os.devnull, 'wb')
 
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
+
 
 CRYPT_BASE_PATH = os.path.abspath(
     os.path.expanduser(
-        os.getenv('CRYPT_PATH', '~/.crypt')
+        os.getenv('CRYPT_BASE_PATH', '~/.crypt')
     )
 )
 CRYPT_REPO_PATH = os.path.join(CRYPT_BASE_PATH, 'repo')
+CRYPT_CONFIG_PATH = os.path.join(CRYPT_BASE_PATH, 'crypt.cfg')
+
+viewers = []
+
+
+def init(args):
+    ensure_initialized()
 
 
 def add(args):
-    crypt_key_name = os.getenv('CRYPT_KEY_NAME', None)
-    if crypt_key_name is None:
-        raise RuntimeError('CRYPT_KEY_NAME environment variable must be set.')
-
-    ensure_repo_exists()
+    ensure_initialized()
     encrypted_file_path = get_encrypted_file_path(args.crypt_path)
     ensure_directory_exists(os.path.dirname(encrypted_file_path))
 
-    gpg_args = ['--encrypt', '--output', encrypted_file_path, '--recipient', crypt_key_name]
+    gpg_args = ['--encrypt', '--output', encrypted_file_path]
+    for viewer in viewers:
+        gpg_args.extend(['--recipient', viewer])
     gpg_kwargs = {}
     if args.path == '-':
         gpg_kwargs['stdin'] = sys.stdin
@@ -73,7 +83,7 @@ def ensure_file_is_removed(path_to_file):
             raise
 
 
-def ensure_repo_exists():
+def ensure_initialized():
     if os.path.exists(CRYPT_REPO_PATH):
         if not os.path.isdir(CRYPT_REPO_PATH):
             raise RuntimeError('Expected {0} to be a directory.'.format(CRYPT_REPO_PATH))
@@ -84,6 +94,29 @@ def ensure_repo_exists():
     if not os.path.exists(readme_path):
         with open(readme_path, 'w') as readme:
             readme.write('This is a secure repository containing encrypted files managed by crypt.')
+
+
+    config = configparser.SafeConfigParser()
+    config.read(CRYPT_CONFIG_PATH)
+    try:
+        csv_viewers = config.get('crypt', 'viewers')
+    except configparser.Error:
+        sys.stderr.write('You have not configured this crypt, setting it up now.\n')
+        csv_viewers = ''
+        while csv_viewers.strip() == '':
+            csv_viewers = raw_input('Enter a comma separated list of keys that will be allowed to view files in this crypt: ')
+
+        try:
+            config.add_section('crypt')
+        except configparser.DuplicateSectionError:
+            pass
+
+        config.set('crypt', 'viewers', csv_viewers)
+
+        with open(CRYPT_CONFIG_PATH, 'w') as config_file:
+            config.write(config_file)
+
+    viewers.extend(x.strip() for x in csv_viewers.split(','))
 
 
 def call(*args, **kwargs):
@@ -163,6 +196,9 @@ def execute(args, extra_args=None):
 def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='commands')
+
+    init_parser = subparsers.add_parser('init', help='Setup your crypt')
+    init_parser.set_defaults(func=init)
 
     add_parser = subparsers.add_parser('add', help='Add a file to the secure repo')
     add_parser.add_argument('crypt_path', help='The path within the secure repo to store the file at')
