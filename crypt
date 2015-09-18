@@ -7,6 +7,7 @@ import errno
 import os
 import random
 import shutil
+import stat
 import string
 import subprocess
 import sys
@@ -249,6 +250,8 @@ def execute(args, extra_args=None):
                 gpg('--decrypt', '--output', path, get_encrypted_file_path(crypt_path))
             except subprocess.CalledProcessError:
                 sys.exit(1)
+
+            os.chmod(path, stat.S_IRUSR)
 
         exit_code = subprocess.call(args.cmd)
     finally:
