@@ -18,11 +18,12 @@ except ImportError:
     DEVNULL = open(os.devnull, 'wb')
 
 
-CRYPT_REPO_PATH = os.path.abspath(
+CRYPT_BASE_PATH = os.path.abspath(
     os.path.expanduser(
-        os.getenv('CRYPT_REPO_PATH', '~/.crypt')
+        os.getenv('CRYPT_PATH', '~/.crypt')
     )
 )
+CRYPT_REPO_PATH = os.path.join(CRYPT_BASE_PATH, 'repo')
 
 
 def add(args):
@@ -32,11 +33,21 @@ def add(args):
 
     ensure_repo_exists()
     encrypted_file_path = get_encrypted_file_path(args.crypt_path)
-    input_file_path = os.path.abspath(args.path)
     ensure_directory_exists(os.path.dirname(encrypted_file_path))
-    gpg('--encrypt', '--output', encrypted_file_path, '--recipient', crypt_key_name, input_file_path)
-    git('add', encrypted_file_path)
-    git('commit', '-m', 'Added {0}'.format(args.crypt_path))
+
+    gpg_args = ['--encrypt', '--output', encrypted_file_path, '--recipient', crypt_key_name]
+    gpg_kwargs = {}
+    if args.path == '-':
+        gpg_kwargs['stdin'] = sys.stdin
+    else:
+        input_file_path = os.path.abspath(args.path)
+        gpg_args.append(input_file_path)
+
+    try:
+        gpg(*gpg_args, **gpg_kwargs)
+    except subprocess.CalledProcessError:
+        sys.exit(1)
+    sys.stderr.write('Wrote {0}.\n'.format(args.crypt_path))
 
 
 def get_encrypted_file_path(crypt_path):
@@ -51,6 +62,17 @@ def ensure_directory_exists(path_to_dir):
             raise
 
 
+def ensure_file_is_removed(path_to_file):
+    if path_to_file is None:
+        return
+
+    try:
+        os.unlink(path_to_file)
+    except OSError as exception:
+        if exception.errno != errno.ENOENT:
+            raise
+
+
 def ensure_repo_exists():
     if os.path.exists(CRYPT_REPO_PATH):
         if not os.path.isdir(CRYPT_REPO_PATH):
@@ -58,27 +80,15 @@ def ensure_repo_exists():
     else:
         ensure_directory_exists(CRYPT_REPO_PATH)
 
-    try:
-        git('rev-parse', '--git-dir')
-    except subprocess.CalledProcessError:
-        git('init')
-
     readme_path = os.path.join(CRYPT_REPO_PATH, 'README')
     if not os.path.exists(readme_path):
         with open(readme_path, 'w') as readme:
-            readme.write('This is a secure git repo containing encrypted files managed by crypt.')
-        git('add', readme_path)
-        git('commit', '-m', 'Create repo and README')
-
-
-def git(*args, **kwargs):
-    return call(['git'] + list(args), **kwargs)
+            readme.write('This is a secure repository containing encrypted files managed by crypt.')
 
 
 def call(*args, **kwargs):
     kwargs.setdefault('cwd', CRYPT_REPO_PATH)
     kwargs.setdefault('stdout', DEVNULL)
-    kwargs.setdefault('stderr', DEVNULL)
     return subprocess.check_call(*args, **kwargs)
 
 
@@ -87,7 +97,10 @@ def gpg(*args, **kwargs):
 
 
 def cat(args):
-    gpg('--decrypt', get_encrypted_file_path(args.crypt_path), stdout=sys.stdout)
+    try:
+        gpg('--decrypt', get_encrypted_file_path(args.crypt_path), stdout=sys.stdout)
+    except subprocess.CalledProcessError:
+        sys.exit(1)
 
 
 def ls(args):
@@ -98,29 +111,53 @@ def ls(args):
 
 
 def rm(args):
-    git('rm', get_encrypted_file_path(args.crypt_path))
-    git('commit', '-m', 'Removed {0}'.format(args.crypt_path))
+    encrypted_file_path = get_encrypted_file_path(args.crypt_path)
+    if not os.path.exists(encrypted_file_path):
+        sys.stderr.write('Path {0} does not exist.\n'.format(args.crypt_path))
+        sys.exit(0)
 
+    try:
+        gpg('--decrypt', encrypted_file_path)
+    except subprocess.CalledProcessError:
+        sys.stderr.write('Removal failed. You must be able to decrypt {0} to remove it.\n'.format(args.crypt_path))
+        sys.exit(1)
 
-def save(args):
-    if hasattr(args, 'data'):
-        data = args.data
+    answer = raw_input("This operation cannot be undone, continue [y/N]? ")
+    if answer.lower() == 'y':
+        os.unlink(encrypted_file_path)
+        sys.stderr.write('Removed {0}.\n'.format(args.crypt_path))
     else:
-        data = sys.stdin.read()
-    with tempfile.NamedTemporaryFile() as tmp_file:
-        tmp_file.write(data)
-        tmp_file.seek(0)
-
-        add(argparse.Namespace(crypt_path=args.crypt_path, path=tmp_file.name))
+        sys.stderr.write('Aborting.\n')
+        sys.exit(1)
 
 
 def pwgen(args):
     chars = string.letters + string.digits + string.punctuation
-    save_args = argparse.Namespace(
-        crypt_path=args.crypt_path,
-        data=''.join(random.choice(chars) for x in range(args.length))
-    )
-    save(save_args)
+    content = ''.join(random.choice(chars) for x in range(args.length))
+    sys.stdout.write('Generated password: {0}\n'.format(content))
+    with tempfile.NamedTemporaryFile() as tmp_file:
+        tmp_file.write(content)
+        tmp_file.seek(0)
+        add(argparse.Namespace(crypt_path=args.crypt_path, path=tmp_file.name))
+
+
+def execute(args, extra_args=None):
+    linked_files = []
+    try:
+        for link in args.link:
+            crypt_path, path = link.split(':')
+            linked_files.append(path)
+            try:
+                gpg('--decrypt', '--output', path, get_encrypted_file_path(crypt_path))
+            except subprocess.CalledProcessError:
+                sys.exit(1)
+
+        exit_code = subprocess.call(args.cmd)
+    finally:
+        for linked_file_path in linked_files:
+            ensure_file_is_removed(linked_file_path)
+
+    sys.exit(exit_code)
 
 
 def main():
@@ -128,8 +165,8 @@ def main():
     subparsers = parser.add_subparsers(title='commands')
 
     add_parser = subparsers.add_parser('add', help='Add a file to the secure repo')
-    add_parser.add_argument('path', help='The file to add')
     add_parser.add_argument('crypt_path', help='The path within the secure repo to store the file at')
+    add_parser.add_argument('path', help='The file to add, specifying "-" will read the input from stdin')
     add_parser.set_defaults(func=add)
 
     cat_parser = subparsers.add_parser('cat', help='Read a file in the secure repo and write its contents to stdout')
@@ -143,14 +180,15 @@ def main():
     rm_parser.add_argument('crypt_path', help='The file to remove')
     rm_parser.set_defaults(func=rm)
 
-    save_parser = subparsers.add_parser('save', help='Save data from stdin into a file in the secure repo')
-    save_parser.add_argument('crypt_path', help='The path within the secure repo to store the data to')
-    save_parser.set_defaults(func=save)
-
     pwgen_parser = subparsers.add_parser('pwgen', help='Generate a password and store it in the secure repo')
     pwgen_parser.add_argument('crypt_path', help='The path within the secure repo to store the password at')
     pwgen_parser.add_argument('--length', type=int, default=32, help='The number of characters to include in the generated password')
     pwgen_parser.set_defaults(func=pwgen)
+
+    exec_parser = subparsers.add_parser('exec', help='Run a process with decrypted files')
+    exec_parser.add_argument('--link', action='append', help='<crypt_path>:<filesystem_path>')
+    exec_parser.add_argument('cmd', nargs=argparse.REMAINDER, help='Command to execute')
+    exec_parser.set_defaults(func=execute)
 
     args = parser.parse_args()
     args.func(args)

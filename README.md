@@ -12,7 +12,7 @@ Maybe!
 
 ## What do I need to run it?
 
-Just gpg, git and python.
+Just gpg and python.
 
 ## Quickstart
 
