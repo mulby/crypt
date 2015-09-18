@@ -32,6 +32,7 @@ CRYPT_BASE_PATH = os.path.abspath(
 )
 CRYPT_REPO_PATH = os.path.join(CRYPT_BASE_PATH, 'repo')
 CRYPT_CONFIG_PATH = os.path.join(CRYPT_BASE_PATH, 'crypt.cfg')
+EDITOR = os.environ.get('EDITOR', 'nano')
 
 viewers = []
 
@@ -74,6 +75,10 @@ def main():
     pwgen_parser.add_argument('crypt_path', help='The path within the crypt to store the password at')
     pwgen_parser.add_argument('--length', type=int, default=32, help='The number of characters to include in the generated password')
     pwgen_parser.set_defaults(func=pwgen)
+
+    edit_parser = subparsers.add_parser('edit', help='Modify a file in the crypt')
+    edit_parser.add_argument('crypt_path', help='The file to modify')
+    edit_parser.set_defaults(func=edit)
 
     args = parser.parse_args()
     if not hasattr(args, 'func'):
@@ -240,7 +245,7 @@ def pwgen(args):
         add(argparse.Namespace(crypt_path=args.crypt_path, path=tmp_file.name))
 
 
-def execute(args, extra_args=None):
+def execute(args):
     linked_files = []
     try:
         for link in args.link:
@@ -260,6 +265,28 @@ def execute(args, extra_args=None):
 
     sys.exit(exit_code)
 
+
+def edit(args):
+    encrypted_file_path = get_encrypted_file_path(args.crypt_path)
+    backup_file_path = encrypted_file_path + '.bak'
+    with tempfile.NamedTemporaryFile() as tmp_file:
+        should_backup = False
+        if os.path.exists(encrypted_file_path):
+            should_backup = True
+            gpg('--decrypt', encrypted_file_path, stdout=tmp_file)
+        subprocess.check_call([EDITOR, tmp_file.name])
+
+        if should_backup:
+            os.rename(encrypted_file_path, backup_file_path)
+
+        try:
+            add(argparse.Namespace(crypt_path=args.crypt_path, path=tmp_file.name))
+        except:
+            if should_backup:
+                os.rename(backup_file_path, encrypted_file_path)
+        else:
+            if should_backup:
+                os.unlink(backup_file_path)
 
 if __name__ == "__main__":
     main()
