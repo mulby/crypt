@@ -17,8 +17,8 @@ Just gpg and python.
 ## Quickstart
 
 1. Ensure you have a gpg key. See the section below on setting up GPG if you haven't already.
-2. Set the CRYPT_KEY_NAME environment variable in your `~/.bashrc` or other file that is sourced during initialization. You should set this variable to the name of the public key that will be used to encrypt all of the data.
-3. Put the crypt script in a directory that is on your PATH.
+2. Put the crypt script in a directory that is on your PATH.
+3. Run `crypt init` and give it a list of public key names. The owners of these keys will be able to decrypt the secrets, you will typically just want to use your own public key name here.
 4. Start adding secrets! You can do so by running `crypt add <file containing secrets> <path inside the crypt>`.
 5. Configure your screen lock to restart your gpg-agent. You can do this by running `gpgconf --reload gpg-agent`. Anytime you lock your screen, you will have to enter the password for your private key before using any secrets in the crypt.
 
