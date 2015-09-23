@@ -198,6 +198,8 @@ def ensure_initialized():
         with open(CRYPT_CONFIG_PATH, 'w') as config_file:
             config.write(config_file)
 
+        os.chmod(CRYPT_CONFIG_PATH, stat.S_IWUSR | stat.S_IRUSR)
+
     viewers.extend(x.strip() for x in csv_viewers.split(','))
 
     if not os.path.exists(CRYPT_MARKER_PATH):
@@ -214,6 +216,8 @@ def ensure_initialized():
                 gpg(*gpg_args)
             except subprocess.CalledProcessError:
                 sys.exit(1)
+
+        os.chmod(CRYPT_MARKER_PATH, stat.S_IWUSR | stat.S_IRUSR)
 
 
 def call(*args, **kwargs):
