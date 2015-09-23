@@ -121,6 +121,8 @@ def add(args):
     except subprocess.CalledProcessError:
         sys.exit(1)
 
+    os.chmod(encrypted_file_path, stat.S_IWUSR | stat.S_IRUSR)
+
 
 def get_encrypted_file_path(crypt_path):
     return os.path.join(CRYPT_REPO_PATH, crypt_path) + '.gpg'
@@ -220,12 +222,6 @@ def rm(args):
         sys.stderr.write('Path {0} does not exist.\n'.format(args.crypt_path))
         sys.exit(0)
 
-    try:
-        gpg('--decrypt', encrypted_file_path)
-    except subprocess.CalledProcessError:
-        sys.stderr.write('Removal failed. You must be able to decrypt {0} to remove it.\n'.format(args.crypt_path))
-        sys.exit(1)
-
     if args.force:
         answer = 'y'
     else:
@@ -241,12 +237,6 @@ def mv(args):
     from_encrypted_file_path = get_encrypted_file_path(args.from_crypt_path)
     if not os.path.exists(from_encrypted_file_path):
         sys.stderr.write('Path {0} does not exist.\n'.format(args.from_crypt_path))
-        sys.exit(1)
-
-    try:
-        gpg('--decrypt', from_encrypted_file_path)
-    except subprocess.CalledProcessError:
-        sys.stderr.write('Move failed. You must be able to decrypt {0} to move it.\n'.format(args.from_crypt_path))
         sys.exit(1)
 
     to_encrypted_file_path = get_encrypted_file_path(args.to_crypt_path)
