@@ -6,13 +6,22 @@ crypt is a simple tool to help developers safely store secrets on their local ma
 
 The goal is to reduce the number of secrets that must be protected on your machine. Much like Lastpass and other similar tools the goal is to create one master secret that is used to unlock the other secrets. You then only need to worry about protecting that single secret. The single secret in this case is your private key file and its associated password.
 
-## Is this just a case of you being overly paranoid?
+## Isn't this a little paranoid?
 
 Maybe!
 
+## How is this different from Gnome Keyring and other things like that?
+
+There are lots of tools out there that solves problems like this one. They have their pros and cons. Here's what I like about crypt:
+
+* Provides several ways to minimize the amount of time the data is visible in cleartext.
+* Easy to integrate with other tools, you can do stuff like: `crypt cat password/facebook | xclip`.
+* Protect arbitrary data, not just passwords. This includes configuration files, environment variables etc.
+* Easier to use on different platforms (like Mac OS X).
+
 ## What do I need to run it?
 
-Just gpg and python.
+Just gpg and python 2.7
 
 ## Quickstart
 
