@@ -32,6 +32,7 @@ CRYPT_BASE_PATH = os.path.abspath(
 )
 CRYPT_REPO_PATH = os.path.join(CRYPT_BASE_PATH, 'repo')
 CRYPT_CONFIG_PATH = os.path.join(CRYPT_BASE_PATH, 'crypt.cfg')
+CRYPT_MARKER_PATH = os.path.join(CRYPT_BASE_PATH, 'marker')
 EDITOR = os.environ.get('EDITOR', 'nano')
 
 viewers = []
@@ -84,7 +85,16 @@ def main():
     if not hasattr(args, 'func'):
         parser.print_help()
     else:
+        check_user_authorization()
         args.func(args)
+
+
+def check_user_authorization():
+    try:
+        gpg('--decrypt', CRYPT_MARKER_PATH)
+    except subprocess.CalledProcessError:
+        sys.stderr.write('This user is not authorized to access the crypt\n')
+        sys.exit(2)
 
 
 def init(args):
@@ -118,7 +128,7 @@ def get_encrypted_file_path(crypt_path):
 
 def ensure_directory_exists(path_to_dir):
     try:
-        os.makedirs(path_to_dir)
+        os.makedirs(path_to_dir, stat.S_IRWXU)
     except OSError as exception:
         if exception.errno != errno.EEXIST:
             raise
@@ -142,12 +152,6 @@ def ensure_initialized():
     else:
         ensure_directory_exists(CRYPT_REPO_PATH)
 
-    readme_path = os.path.join(CRYPT_REPO_PATH, 'README')
-    if not os.path.exists(readme_path):
-        with open(readme_path, 'w') as readme:
-            readme.write('This directory contains encrypted files managed by crypt.')
-
-
     config = configparser.SafeConfigParser()
     config.read(CRYPT_CONFIG_PATH)
     try:
@@ -169,6 +173,21 @@ def ensure_initialized():
             config.write(config_file)
 
     viewers.extend(x.strip() for x in csv_viewers.split(','))
+
+    if not os.path.exists(CRYPT_MARKER_PATH):
+        with tempfile.NamedTemporaryFile() as tmp_file:
+            tmp_file.write('This user has permission to decrypt this file.')
+            tmp_file.seek(0)
+
+            gpg_args = ['--encrypt', '--output', CRYPT_MARKER_PATH]
+            for viewer in viewers:
+                gpg_args.extend(['--recipient', viewer])
+            gpg_args.append(os.path.abspath(tmp_file.name))
+
+            try:
+                gpg(*gpg_args)
+            except subprocess.CalledProcessError:
+                sys.exit(1)
 
 
 def call(*args, **kwargs):
