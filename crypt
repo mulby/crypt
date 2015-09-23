@@ -108,7 +108,8 @@ def main():
     if not hasattr(args, 'func'):
         parser.print_help()
     else:
-        check_user_authorization()
+        if args.func != init:
+            check_user_authorization()
         args.func(args)
 
 
