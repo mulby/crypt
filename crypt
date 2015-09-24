@@ -96,7 +96,8 @@ def main():
     exec_parser.set_defaults(func=execute)
 
     pwgen_parser = subparsers.add_parser('pwgen', help='Generate a password and store it in the crypt')
-    pwgen_parser.add_argument('crypt_path', help='The path within the crypt to store the password at')
+    pwgen_parser.add_argument('--output', help='The path within the crypt to store the password at. Defaults to stdout.')
+    pwgen_parser.add_argument('--chars', action='append', choices=['alphanum', 'punc', 'space'], help='Allowed characters in the password')
     pwgen_parser.add_argument('--length', type=int, default=32, help='The number of characters to include in the generated password')
     pwgen_parser.set_defaults(func=pwgen)
 
@@ -272,14 +273,30 @@ def mv(args):
     shutil.move(from_encrypted_file_path, to_encrypted_file_path)
 
 
+PASSWORD_CHAR_CATEGORIES = {
+    'alphanum': string.letters + string.digits,
+    'punc': string.punctuation,
+    'space': [' ']
+}
+
+
 def pwgen(args):
-    chars = string.letters + string.digits + string.punctuation
+    if args.chars:
+        chars = []
+        for category in args.chars:
+            chars.extend(PASSWORD_CHAR_CATEGORIES[category])
+    else:
+        chars = PASSWORD_CHAR_CATEGORIES['alphanum'] + PASSWORD_CHAR_CATEGORIES['punc']
+
     content = ''.join(random.choice(chars) for x in range(args.length))
-    sys.stdout.write('Generated password: {0}\n'.format(content))
-    with tempfile.NamedTemporaryFile() as tmp_file:
-        tmp_file.write(content)
-        tmp_file.seek(0)
-        add(argparse.Namespace(crypt_path=args.crypt_path, path=tmp_file.name))
+    if hasattr(args, 'output') and args.output:
+        with tempfile.NamedTemporaryFile() as tmp_file:
+            tmp_file.write(content)
+            tmp_file.seek(0)
+            add(argparse.Namespace(crypt_path=args.output, path=tmp_file.name))
+        sys.stderr.write('Saved password to {0}: {1}\n'.format(args.output, content))
+    else:
+        sys.stdout.write(content)
 
 
 def execute(args):
