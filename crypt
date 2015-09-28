@@ -77,6 +77,10 @@ def main():
     cat_parser.add_argument('crypt_path', help='The file to read')
     cat_parser.set_defaults(func=cat)
 
+    clip_parser = subparsers.add_parser('clip', help='Decrypt a file in the crypt and write unencrypted contents to the clipboard')
+    clip_parser.add_argument('crypt_path', help='The file to read')
+    clip_parser.set_defaults(func=clip)
+
     list_parser = subparsers.add_parser('ls', help='List files stored in the crypt')
     list_parser.set_defaults(func=ls)
 
@@ -238,6 +242,20 @@ def cat(args):
         sys.exit(1)
 
 
+def clip(args):
+    gpg_proc = subprocess.Popen(
+        ['gpg', '--no-verbose', '--quiet', '--batch', '--decrypt', get_encrypted_file_path(args.crypt_path)],
+        stdout=subprocess.PIPE
+    )
+    clip_proc = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=gpg_proc.stdout, stdout=DEVNULL)
+    gpg_proc.stdout.close()
+    clip_retcode = clip_proc.wait()
+    gpg_retcode = gpg_proc.wait()
+
+    if clip_retcode > 0 or gpg_retcode > 0:
+        sys.exit(1)
+
+
 def ls(args):
     for root, dirs, files in os.walk(CRYPT_REPO_PATH, topdown=False):
         for name in files:
@@ -301,6 +319,7 @@ def pwgen(args):
 
 def execute(args):
     linked_files = []
+    exit_code = 0
     try:
         for link in args.link:
             crypt_path, path = link.split(':')
@@ -313,6 +332,8 @@ def execute(args):
             os.chmod(path, stat.S_IRUSR)
 
         exit_code = subprocess.call(args.cmd)
+    except KeyboardInterrupt:
+        exit_code = 1
     finally:
         for linked_file_path in linked_files:
             ensure_file_is_removed(linked_file_path)
