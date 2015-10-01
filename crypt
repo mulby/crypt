@@ -29,6 +29,7 @@ import argparse
 import errno
 import os
 import random
+import re
 import shutil
 import stat
 import string
@@ -56,6 +57,7 @@ CRYPT_BASE_PATH = os.path.abspath(
 CRYPT_REPO_PATH = os.path.join(CRYPT_BASE_PATH, 'repo')
 CRYPT_CONFIG_PATH = os.path.join(CRYPT_BASE_PATH, 'crypt.cfg')
 CRYPT_MARKER_PATH = os.path.join(CRYPT_BASE_PATH, 'marker')
+CRYPT_GPG_ARGS = ['gpg', '--no-verbose', '--quiet', '--batch']
 EDITOR = os.environ.get('EDITOR', 'nano')
 
 viewers = []
@@ -95,12 +97,13 @@ def main():
     mv_parser.set_defaults(func=mv)
 
     exec_parser = subparsers.add_parser('exec', help='Run a process with decrypted files')
-    exec_parser.add_argument('--link', action='append', help='<crypt_path>:<filesystem_path>, decrypt the file stored at <crypt_path> and store the result at <filesystem_path> while executing the subprocess')
+    exec_parser.add_argument('--link', action='append', default=list(), metavar='crypt_path:filesystem_path', help='Decrypt the file stored at <crypt_path> and store the result at <filesystem_path> while executing the subprocess')
+    exec_parser.add_argument('--env', action='append', default=list(), metavar='crypt_path', help='Parse environment variables out of the file stored at <crypt_path>')
     exec_parser.add_argument('cmd', nargs=argparse.REMAINDER, help='Command to execute')
     exec_parser.set_defaults(func=execute)
 
     pwgen_parser = subparsers.add_parser('pwgen', help='Generate a password and store it in the crypt')
-    pwgen_parser.add_argument('--output', help='The path within the crypt to store the password at. Defaults to stdout.')
+    pwgen_parser.add_argument('--output', metavar='crypt_path', help='The path within the crypt to store the password at. Defaults to stdout.')
     pwgen_parser.add_argument('--chars', action='append', choices=['alphanum', 'punc', 'space'], help='Allowed characters in the password')
     pwgen_parser.add_argument('--length', type=int, default=32, help='The number of characters to include in the generated password')
     pwgen_parser.set_defaults(func=pwgen)
@@ -232,7 +235,7 @@ def call(*args, **kwargs):
 
 
 def gpg(*args, **kwargs):
-    return call(['gpg', '--no-verbose', '--quiet', '--batch'] + list(args), **kwargs)
+    return call(CRYPT_GPG_ARGS + list(args), **kwargs)
 
 
 def cat(args):
@@ -244,7 +247,7 @@ def cat(args):
 
 def clip(args):
     gpg_proc = subprocess.Popen(
-        ['gpg', '--no-verbose', '--quiet', '--batch', '--decrypt', get_encrypted_file_path(args.crypt_path)],
+        CRYPT_GPG_ARGS + ['--decrypt', get_encrypted_file_path(args.crypt_path)],
         stdout=subprocess.PIPE
     )
     clip_proc = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=gpg_proc.stdout, stdout=DEVNULL)
@@ -318,8 +321,25 @@ def pwgen(args):
 
 
 def execute(args):
-    linked_files = []
     exit_code = 0
+
+    env = dict(os.environ)
+    for env_var_crypt_path in args.env:
+        gpg_proc = subprocess.Popen(
+            CRYPT_GPG_ARGS + ['--decrypt', get_encrypted_file_path(env_var_crypt_path)],
+            stdout=subprocess.PIPE
+        )
+        for line in gpg_proc.stdout:
+            m = re.match(r'(?:export )?(?P<key>[^=]+)=(?P<value>.*)', line)
+            if not m:
+                continue
+            env[m.group('key')] = m.group('value')
+
+        exit_code = gpg_proc.wait()
+        if exit_code != 0:
+            sys.exit(exit_code)
+
+    linked_files = []
     try:
         for link in args.link:
             crypt_path, path = link.split(':')
@@ -331,7 +351,7 @@ def execute(args):
 
             os.chmod(path, stat.S_IRUSR)
 
-        exit_code = subprocess.call(args.cmd)
+        exit_code = subprocess.call(args.cmd, env=env)
     except KeyboardInterrupt:
         exit_code = 1
     finally:
