@@ -4,17 +4,17 @@
 
 crypt is a simple tool to help developers safely store secrets on their local machine. It is primarily used to store passwords, SSH keys, AWS access keys and other sensitive information. It is intended to provide convenient access to the information while still protecting you from accidentally copying it in cleartext to unsecured locations. Of specific concern are automated backups, rsync/scp operations, pushes to public repositories, network filesystems etc.
 
-The goal is to reduce the number of secrets that must be protected on your machine. Much like Lastpass and other similar tools the goal is to create one master secret that is used to unlock the other secrets. You then only need to worry about protecting that single secret. The single secret in this case is your private key file and its associated password.
+The goal is to reduce the number of secrets that must be protected on your machine. Much like lastpass and other similar tools the goal is to create one master secret that is used to unlock the other secrets. You then only need to worry about protecting that single secret. The single secret in this case is your private key file and its associated password.
 
 ## Isn't this a little paranoid?
 
 Maybe!
 
-## How is this different from Gnome Keyring and other things like that?
+## How is this different from Gnome Keyring and other similar tools?
 
 There are lots of tools out there that solves problems like this one. They have their pros and cons. Here's what I like about crypt:
 
-* Provides several ways to minimize the amount of time the data is visible in cleartext.
+* Provides several ways to minimize the amount of time the data is visible in cleartext. `crypt exec` can be used to temporarily decrypt the data while executing a process, once the process terminates the decrypted data is automatically removed.
 * Easy to integrate with other tools, you can do stuff like: `crypt cat password/facebook | xclip`.
 * Protect arbitrary data, not just passwords. This includes configuration files, environment variables etc.
 * Easier to use on different platforms (like Mac OS X).
@@ -52,37 +52,19 @@ Now it should appear in your crypt:
 crypt ls
 ```
 
+You can now safely remove the original file:
+
+```bash
+rm aws-credentials
+```
+
 Create a wrapper for the AWS CLI that uses the credentials in the crypt, lets call it `admin_aws`:
 
 ```bash
 #!/bin/bash
 
-eval "$(crypt cat aws/creds)"
-aws "$@"
+# This command will decrypt the file containing the credentials and define them in the environment of the "aws" subprocess.
+crypt exec --env aws/cred aws "$@"
 ```
 
 Now anytime you run `admin_aws` you will first have to decrypt the credentials using your private key password! Now you don't have to worry about accidentally copying your ~/.aws/config file off of your machine.
-
-
-## Setting up GPG
-
-First you will need to install gpg. On Ubuntu this is simple as `sudo apt-get install gnupg`.
-
-Next you will need to generate your private key:
-
-```bash
-gpg --gen-key
-```
-
-This will ask you several questions, be sure to choose a key length of 2048 or greater and a strong passphrase, longer is better to prevent brute force attacks. Note that if you forget this passphrase you will lose access to all of the associated secrets.
-
-Next export your private key, public key and revocation certificate to a thumbdrive and store them in a physically secure location.
-
-```bash
-# public key
-gpg --export --output /path/to/thumbdrive/mykey.pub -a mykey
-# private key
-gpg --export-secret-key --output /path/to/thumbdrive/mykey.key -a mykey
-# revocation certificate
-gpg --output /path/to/thumbdrive/revoke_mykey.asc --gen-revoke mykey
-```
