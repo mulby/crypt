@@ -342,7 +342,8 @@ def execute(args):
     linked_files = []
     try:
         for link in args.link:
-            crypt_path, path = link.split(':')
+            crypt_path, raw_path = link.split(':')
+            path = os.path.abspath(os.path.expanduser(raw_path))
             linked_files.append(path)
             try:
                 gpg('--decrypt', '--output', path, get_encrypted_file_path(crypt_path))
