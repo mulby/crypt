@@ -1,4 +1,4 @@
-# crypt
+t# crypt
 
 ## What is this thing?
 
@@ -29,33 +29,31 @@ Just gpg and python 2.7
 2. Put the crypt script in a directory that is on your PATH.
 3. Run `crypt init` and give it a list of public key names. The owners of these keys will be able to decrypt the secrets, you will typically just want to use your own public key name here.
 4. Start adding secrets! You can do so by running `crypt add <file containing secrets> <path inside the crypt>`.
-5. Configure your screen lock to restart your gpg-agent. You can do this by running `gpgconf --reload gpg-agent`. Anytime you lock your screen, you will have to enter the password for your private key before using any secrets in the crypt.
+
+
+## Optional Additional Configuration
+1. Enable bash auto-completion by copying crypt-bash-completions.sh to /etc/bash\_completion.d/ and sourcing that file.
+2. Configure your screen lock to restart your gpg-agent. You can do this by running `gpgconf --reload gpg-agent`. Anytime you lock your screen, you will have to enter the password for your private key before using any secrets in the crypt.
 
 ## Example: protecting your AWS credentials
 
-Create a file called "aws-credentials" with the content:
+Create a file in the crypt to store your aws credentials using the command:
+
+```bash
+crypt edit aws/creds
+```
+
+This will open your editor. Insert the following content, save the file, and then close the editor:
 
 ```bash
 export AWS_ACCESS_KEY_ID=<YOUR ACCESS KEY ID GOES HERE>
 export AWS_SECRET_ACCESS_KEY=<YOUR SECRET ACCESS KEY GOES HERE>
 ```
 
-Store this file in the crypt:
-
-```bash
-crypt add aws-credentials aws/creds
-```
-
 Now it should appear in your crypt:
 
 ```bash
 crypt ls
-```
-
-You can now safely remove the original file:
-
-```bash
-rm aws-credentials
 ```
 
 Create a wrapper for the AWS CLI that uses the credentials in the crypt, lets call it `admin_aws`:
