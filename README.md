@@ -1,4 +1,4 @@
-t# crypt
+# crypt
 
 ## What is this thing?
 
