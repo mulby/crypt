@@ -38,6 +38,11 @@ import subprocess
 import sys
 import tempfile
 
+try:
+    from string import ascii_letters
+except ImportError:
+    from string import letters as ascii_letters
+
 
 try:
     from subprocess import DEVNULL
@@ -307,7 +312,7 @@ def mv(args):
 
 
 PASSWORD_CHAR_CATEGORIES = {
-    'alphanum': string.letters + string.digits,
+    'alphanum': ascii_letters + string.digits,
     'punc': string.punctuation,
     'space': [' ']
 }
