@@ -268,19 +268,29 @@ def clip(args):
 
 
 def ls(args):
+    paths = {}
     for root, dirs, files in os.walk(CRYPT_REPO_PATH, topdown=False):
         for name in files:
             if name.endswith('.gpg'):
                 absolute_path = os.path.join(root, name)
                 relative_path = os.path.relpath(absolute_path, CRYPT_REPO_PATH)
                 crypt_path = relative_path[:-4]
-                if not args.long:
-                    print(crypt_path)
-                else:
-                    st = os.stat(absolute_path)
-                    last_modification_time = datetime.datetime.fromtimestamp(st.st_mtime).isoformat()
-                    size_in_bytes = st.st_size
-                    print("{mtime:<26} {size:>13} {path}".format(mtime=last_modification_time, size=size_in_bytes, path=crypt_path))
+                st = os.stat(absolute_path)
+                last_modification_time = datetime.datetime.fromtimestamp(st.st_mtime).isoformat()
+                size_in_bytes = st.st_size
+                paths[crypt_path] = {
+                    'mtime': last_modification_time,
+                    'size': size_in_bytes,
+                    'path': crypt_path
+                }
+
+
+    for path in sorted(paths.keys()):
+        if args.long:
+            meta = paths[path]
+            print("{mtime:<26} {size:>13} {path}".format(**meta))
+        else:
+            print(path)
 
 
 def rm(args):
